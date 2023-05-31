@@ -1,0 +1,44 @@
+# Au Equilibrium of shock
+
+# Energy in eV, time in ps, distance in angstroms.
+
+variable	temp equal 300		# equlibrium temperature
+variable	press equal 1		# equlibrium pressure
+
+units		metal
+boundary        p p p
+
+atom_style	atomic
+lattice		fcc 4.08
+region		sim_box block 0 5 0 5 0 12
+create_box	1 sim_box
+create_atoms	1 box
+
+pair_style	deepmd Au.cp.pb
+pair_coeff	* *
+mass		1 197
+
+# Define initial velocity
+
+velocity	all create ${temp} 123456 dist gaussian
+
+# Equilibrate the system
+
+variable	tdamp equal 100*dt
+variable	pdamp equal 1000*dt
+fix             NPT all npt temp ${temp} ${temp} ${tdamp} iso ${press} ${press} ${pdamp}
+
+# Output
+
+dump            imf all custom 50000 Coords_ShockCompression0.txt id type x y z vx vy vz
+
+thermo_style 	custom step cpu temp press ke pe vol density
+thermo          1000
+timestep	1e-3
+restart		5000 restart.*
+
+run		50000
+
+undump		imf
+write_restart	restart.NPT_50ps
+write_data	NPT_50ps.data

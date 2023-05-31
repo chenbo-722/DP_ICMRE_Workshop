@@ -1,0 +1,82 @@
+# Au Equilibrium of msst shock dynamics
+
+# Energy in eV, time in ps, distance in angstroms.
+
+units		metal
+boundary        p p p
+
+read_restart	restart.NPT_50ps
+
+pair_style	deepmd Au.cp.pb
+pair_coeff	* *
+
+thermo		1000
+mass		1 197
+
+# Settings
+
+restart		10000 restart.*
+timestep	1e-3
+
+# Shock in Au
+
+variable	us equal 50 # shock velocity  km/s
+
+# MSST fix
+
+fix		msst all msst z ${us} q 3600 mu 0.0903 tscale 0.01 
+
+variable	time equal dt*step
+variable	temp equal temp
+variable	rho equal density
+
+variable	volume equal vol			# volume
+variable	pzz equal pzz				# axial stress
+variable	tau equal 0.5*(pzz-0.5*(pxx+pyy))	# shear stress
+variable	tauvm equal sqrt(0.5*(pzz-pyy)^2+(pzz-pxx)^2+(pxx-pyy)^2)	# Von Mises Stress
+variable	dhug equal f_msst[1]
+variable	dray equal f_msst[2]
+variable	lgr_vel equal f_msst[3]
+variable	lgr_pos equal f_msst[4]
+variable	msst equal econserve
+
+thermo_style 	custom step cpu temp ke pe lx ly lz pxx pyy pzz etotal v_dhug v_dray v_lgr_vel v_lgr_pos f_msst
+thermo		1000
+
+fix 		stress2 all print 1000 "${time} ${temp} ${rho} ${volume} ${pzz} ${tau} ${tauvm} ${dhug} ${dray} ${lgr_vel} ${lgr_pos} ${msst}" screen no file output_${us}.txt title 'time temp rho vol pzz tau tauvm dhug dray lgr_vel lgr_pos msst'
+
+# pair correlation
+
+compute		rdf all rdf 100 1 1
+fix		rdf all ave/time 100 100 10000 c_rdf[*] file RDF_${us}.txt mode vector
+
+# Pressure
+
+# Chunk
+
+compute		chunkall all chunk/atom bin/1d z 0 5 nchunk every
+compute		chunkall2 all chunk/atom bin/2d x 0 2 z 0 2 nchunk every
+
+compute		peratom all stress/atom thermo_temp
+variable	stressxx atom c_peratom[1]
+variable	stressyy atom c_peratom[2]
+variable	stresszz atom c_peratom[3]
+variable	stressxy atom c_peratom[4]
+variable	stressxz atom c_peratom[5]
+variable	stressyz atom c_peratom[6]
+
+fix		stress1d all ave/chunk 100 100 10000 chunkall v_stressxx v_stressyy v_stresszz v_stressxy v_stressxz v_stressyz file Pressure1D_${us}.txt
+fix		stress2d all ave/chunk 100 100 10000 chunkall2 v_stressxx v_stressyy v_stresszz v_stressxy v_stressxz v_stressyz file Pressure2D_${us}.txt
+
+# Coordinate
+
+compute		keatom all ke/atom
+compute		peatom all pe/atom
+variable	keatom atom c_keatom
+variable	peatom atom c_peatom
+
+dump		imf all custom 10000 Coords_ShockCompression_${us}.* id type x y z vx vy vz v_keatom v_peatom
+
+run	        100000
+
+write_restart	restart_shock.${us}
